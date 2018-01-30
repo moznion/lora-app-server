@@ -411,20 +411,24 @@ func LoginUser(db sqlx.Queryer, username string, password string) (string, error
 	// Generate the token.
 	now := time.Now()
 	nowSecondsSinceEpoch := now.Unix()
-	var expSecondsSinceEpoch int64
-	if user.SessionTTL > 0 {
-		expSecondsSinceEpoch = nowSecondsSinceEpoch + (60 * int64(user.SessionTTL))
-	} else {
-		expSecondsSinceEpoch = nowSecondsSinceEpoch + int64(defaultSessionTTL/time.Second)
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+
+	jwtMapClaims := jwt.MapClaims{
 		"iss":      "lora-app-server",
 		"aud":      "lora-app-server",
 		"nbf":      nowSecondsSinceEpoch,
-		"exp":      expSecondsSinceEpoch,
 		"sub":      "user",
 		"username": user.Username,
-	})
+	}
+
+	if user.SessionTTL > 0 {
+		jwtMapClaims["exp"] = nowSecondsSinceEpoch + (60 * int64(user.SessionTTL))
+	} else if user.SessionTTL < 0 {
+		// NOP
+		// It doesn't set `exp` property to claim, that means generated token is immortal.
+	} else {
+		jwtMapClaims["exp"] = nowSecondsSinceEpoch + int64(defaultSessionTTL/time.Second)
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtMapClaims)
 
 	jwt, err := token.SignedString(jwtsecret)
 	if nil != err {
